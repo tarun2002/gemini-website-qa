@@ -1,53 +1,56 @@
+import os
+import asyncio
+import nest_asyncio
 import streamlit as st
-from openai import OpenAI
+from langchain_community.document_loaders import WebBaseLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain.chains import RetrievalQA
+from my_api_key import key
 
-# Show title and description.
-st.title("📄 Document question answering")
-st.write(
-    "Upload a document below and ask a question about it – GPT will answer! "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-)
+nest_asyncio.apply()
+if not asyncio.get_event_loop().is_running():
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+os.environ["GOOGLE_API_KEY"] = key 
+os.environ["USER_AGENT"] = "my-streamlit-app/0.1"
 
-    # Let the user upload a file via `st.file_uploader`.
-    uploaded_file = st.file_uploader(
-        "Upload a document (.txt or .md)", type=("txt", "md")
-    )
 
-    # Ask the user for a question via `st.text_area`.
-    question = st.text_area(
-        "Now ask a question about the document!",
-        placeholder="Can you give me a short summary?",
-        disabled=not uploaded_file,
-    )
+st.title("🔎 Website Q&A with Gemini + LangChain")
+st.write("Enter a website URL and ask a question. The app will fetch content, build embeddings, and answer.")
 
-    if uploaded_file and question:
+# User inputs
+url = st.text_input("Enter Website URL", )
+query = st.text_input("Enter your Question", )
 
-        # Process the uploaded file and question.
-        document = uploaded_file.read().decode()
-        messages = [
-            {
-                "role": "user",
-                "content": f"Here's a document: {document} \n\n---\n\n {question}",
-            }
-        ]
+if st.button("Get Answer"):
+    with st.spinner("Fetching and processing..."):
+        try:
+            # 1. Load documents
+            loader = WebBaseLoader(url)
+            documents = loader.load()
 
-        # Generate an answer using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            stream=True,
-        )
+            # 2. Split into chunks
+            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            chunks = splitter.split_documents(documents)
 
-        # Stream the response to the app using `st.write_stream`.
-        st.write_stream(stream)
+            # 3. Create vector DB
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            vectorstore = FAISS.from_documents(chunks, embeddings)
+
+            # 4. Create QA chain
+            qa = RetrievalQA.from_chain_type(
+                llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash"),
+                retriever=vectorstore.as_retriever()
+            )
+
+            # 5. Run query
+            answer = qa.invoke({"query": query})
+
+            st.subheader("Answer:")
+            st.write(answer["result"])
+
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
