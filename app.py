@@ -37,7 +37,7 @@ if st.button("Get Answer"):
             chunks = splitter.split_documents(documents)
 
             # 3. Create vector DB
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
             vectorstore = FAISS.from_documents(chunks, embeddings)
 
             # 4. Create QA chain
