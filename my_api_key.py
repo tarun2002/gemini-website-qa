@@ -1,1 +1,1 @@
-key = 'AIzaSyCJ6X9we4suJD8z06BEWMh3EQSPU1tUJ_4'
+key = 'api_key'
